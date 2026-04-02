@@ -117,6 +117,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
 .modal-btn:hover{background:var(--accent2);}
 .modal-cancel{background:none;border:1px solid var(--border2);color:var(--muted2);border-radius:8px;padding:10px;font-size:14px;cursor:pointer;font-family:var(--sans);}
 .modal-cancel:hover{border-color:var(--muted2);}
+.modal-msg{font-family:var(--mono);font-size:13px;padding:10px 16px;border-radius:6px;display:none;}
+.modal-msg.ok{display:block;background:var(--greenbg);color:var(--accent);border:1px solid var(--accent2);}
+.modal-msg.err{display:block;background:var(--redbg);color:var(--red);border:1px solid var(--red);}
 
 .watermark{position:fixed;bottom:18px;right:22px;text-align:right;opacity:.15;pointer-events:none;z-index:9999;}
 .watermark-main{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent);letter-spacing:2px;}
@@ -246,7 +249,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
     <div class="modal-title">Finish Paper</div>
     <div class="modal-score" id="modal-score">0/70</div>
     <div class="modal-sub" id="modal-sub"></div>
-    <button class="modal-btn" id="modal-btn" onclick="doSubmit()">Reveal All Answers →</button>
+    <div class="modal-msg" id="modal-msg"></div>
+    <button class="modal-btn" id="modal-btn" onclick="doSubmit()">Submit to Teacher →</button>
     <button class="modal-cancel" onclick="closeModal()">Cancel</button>
   </div>
 </div>
@@ -569,6 +573,7 @@ const DIAGRAMS = {
 
 const state = {};
 let curCh = null;
+const TOTAL = 70;
 let studentName = '';
 const VALID_IDS = new Set(['IMP1009','IMP1093','IMP1213','IMP1301','IMP1427','IMP1493','IMP1567','IMP1619','IMP1721','IMP1811','IMP1889','IMP1993','IMP2063','IMP2113','IMP2213','IMP2309','IMP2377','IMP2441','IMP2531','IMP2621','IMP2689','IMP2791','IMP2909','IMP3023','IMP3109','IMP3191','IMP3319','IMP3373','IMP3449','IMP3511','IMP3559','IMP3643','IMP3709','IMP3719','IMP3779','IMP3797','IMP3877','IMP3943','IMP4073','IMP4211','IMP4273','IMP4373','IMP4423','IMP4481','IMP4583','IMP4673','IMP4759','IMP4817','IMP4951','IMP5059','IMP5153','IMP5273','IMP5351','IMP5471','IMP5569','IMP5669','IMP5791','IMP5867','IMP5981','IMP6073','IMP6203','IMP6271','IMP6361','IMP6473','IMP6571','IMP6691','IMP6779','IMP6833','IMP6949','IMP7013','IMP7103','IMP7213','IMP7309','IMP7451','IMP7523','IMP7591','IMP7717','IMP7817','IMP7933','IMP8089','IMP8221','IMP8291','IMP8423','IMP8543','IMP8629','IMP8699','IMP8821','IMP8831','IMP8963','IMP9103','IMP9181','IMP9311','IMP9403','IMP9461','IMP9539','IMP9601','IMP9689','IMP9803','IMP9859','IMP9967']);
 
@@ -807,19 +812,63 @@ document.getElementById('inp-name').addEventListener('keydown', e => { if (e.key
 // ── MODAL ─────────────────────────────────────────────────────────────────────
 function openModal() {
   const {done, correct} = totSt();
-  const acc = done ? Math.round(correct/done*100) : 0;
-  document.getElementById('modal-score').textContent = `${correct}/70`;
-  document.getElementById('modal-sub').textContent = `${done} answered · answers will be revealed after submission`;
+  document.getElementById('modal-score').textContent = correct + '/' + TOTAL;
+  document.getElementById('modal-sub').textContent = done + ' answered · ' + (TOTAL - done) + ' remaining';
+  document.getElementById('modal-msg').className = 'modal-msg';
+  document.getElementById('modal-msg').textContent = '';
+  const btn = document.getElementById('modal-btn');
+  btn.disabled = false;
+  btn.textContent = 'Submit to Teacher →';
   document.getElementById('submit-modal').classList.add('show');
 }
 function closeModal() { document.getElementById('submit-modal').classList.remove('show'); }
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxycD5NvLdVD1dg8J_BBpEsWbW2WmZB1xxsHb_icmbE9A7K_v1tm8z1cZRTB6hcuyBg0g/exec';
+
 function doSubmit() {
-  closeModal();
-  revealAll();
-  // After reveal, re-render current view to show results
-  if (curCh === '__all__') goAll();
-  else if (curCh) goCh(curCh);
-  else renderOv();
+  const btn = document.getElementById('modal-btn');
+  const msg = document.getElementById('modal-msg');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  const {done, correct} = totSt();
+  const acc = done ? Math.round(correct / done * 100) : 0;
+
+  const answersArr = QS.map(q => {
+    const s = state[q.id];
+    if (!s || s.sel === undefined) return 'Q' + q.id + ':-';
+    const lbl = String.fromCharCode(65 + s.sel);
+    return 'Q' + q.id + ':' + lbl + '(' + (s.correct ? '✓' : '✗') + ')';
+  });
+
+  const payload = {
+    'student-id': studentName,
+    'student-name': studentName,
+    'score': correct,
+    'total': TOTAL,
+    'accuracy': acc + '%',
+    'answers': answersArr.join(' '),
+    'year': '2020'
+  };
+
+  fetch(SCRIPT_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  }).then(() => {
+    msg.className = 'modal-msg ok';
+    msg.textContent = '✓ Results submitted successfully!';
+    btn.textContent = 'Submitted ✓';
+    revealAll();
+    if (curCh === '__all__') goAll();
+    else if (curCh) goCh(curCh);
+    else renderOv();
+  }).catch(() => {
+    msg.className = 'modal-msg err';
+    msg.textContent = '✗ Network error. Please try again.';
+    btn.disabled = false;
+    btn.textContent = 'Submit to Teacher →';
+  });
 }
 function revealAll() {
   QS.forEach(q => {
