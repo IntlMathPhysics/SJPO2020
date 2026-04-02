@@ -578,7 +578,9 @@ function chSt(ch) {
   return {done, correct, total: ids.length, pct: ids.length ? Math.round(done/ids.length*100) : 0};
 }
 function totSt() {
-  return {done: Object.keys(state).length, correct: Object.values(state).filter(s => s.correct).length};
+  const answered = Object.values(state).filter(s => s.sel !== undefined);
+  const correct = answered.filter(s => s.locked && s.correct);
+  return {done: answered.length, correct: correct.length};
 }
 function updateBar() {
   const {done, correct} = totSt();
@@ -653,14 +655,17 @@ function buildOpts(q, s, locked) {
   let oh = '';
   q.opts.forEach((opt, i) => {
     let cls = 'opt';
-    if (locked || (s && s.locked)) {
+    if (s && s.locked) {
+      // Revealed after submit
       cls += ' locked';
       if (i === q.ans) cls += ' ok';
-      else if (s && s.sel === i) cls += ' bad';
+      else if (s.sel === i && i !== q.ans) cls += ' bad';
     } else if (s && s.sel === i) {
+      // Selected but not yet revealed
       cls += ' sel';
     }
-    oh += `<div class="${cls}" onclick="pickAns(${q.id},${i})">
+    const clickable = (s && s.locked) ? '' : ` onclick="pickAns(${q.id},${i})"`;
+    oh += `<div class="${cls}"${clickable}>
       <span class="opt-lbl">${String.fromCharCode(65+i)}</span>
       <span>${opt}</span>
     </div>`;
@@ -682,7 +687,7 @@ function buildCard(q, forceOpen) {
     <div class="q-hd" onclick="togQ(${q.id})">
       <span class="q-num">Q${String(q.id).padStart(2,'0')}</span>
       ${badge}
-      <span class="q-ico" style="margin-left:auto;">${answered?(s.correct?'✓':'✗'):(s?'●':'○')}</span>
+      <span class="q-ico" style="margin-left:auto;">${answered?(s.correct?'✓':'✗'):selected?'●':'○'}</span>
       <span class="q-chev">▼</span>
     </div>
     <div class="q-body">
@@ -749,27 +754,22 @@ function pickAns(qid, idx) {
   if (state[qid] && state[qid].locked) return;
   const q = QS.find(q => q.id === qid);
   const correct = idx === q.ans;
-  state[qid] = {sel: idx, correct, locked: true};
+  // Store answer but do NOT lock yet — allow changing before submit
+  state[qid] = {sel: idx, correct, locked: false};
   const oel = document.getElementById('opts-'+qid);
   let h = '';
   q.opts.forEach((opt, i) => {
-    let cls = 'opt locked';
-    if (i === q.ans) cls += ' ok';
-    else if (i === idx && i !== q.ans) cls += ' bad';
-    h += `<div class="${cls}"><span class="opt-lbl">${String.fromCharCode(65+i)}</span><span>${opt}</span></div>`;
+    let cls = 'opt';
+    if (i === idx) cls += ' sel';
+    h += `<div class="${cls}" onclick="pickAns(${qid},${i})"><span class="opt-lbl">${String.fromCharCode(65+i)}</span><span>${opt}</span></div>`;
   });
   oel.innerHTML = h;
   if (window.MathJax) MathJax.typesetPromise([oel]);
   const c = document.getElementById('qc-'+qid);
   if (c) {
     c.classList.remove('ok','bad');
-    c.classList.add(correct ? 'ok' : 'bad');
     const ico = c.querySelector('.q-ico');
-    if (ico) ico.textContent = correct ? '✓' : '✗';
-    let v = c.querySelector('.verdict');
-    if (!v) { v = document.createElement('div'); oel.after(v); }
-    v.className = `verdict ${correct ? 'ok' : 'bad'}`;
-    v.textContent = correct ? '✓ Correct' : '✗ Incorrect — Correct: ' + String.fromCharCode(65+q.ans);
+    if (ico) ico.textContent = '●';
   }
   updateBar();
   renderSidebar();
@@ -801,27 +801,52 @@ function openModal() {
   const {done, correct} = totSt();
   const acc = done ? Math.round(correct/done*100) : 0;
   document.getElementById('modal-score').textContent = `${correct}/70`;
-  document.getElementById('modal-sub').textContent = `${done} attempted · ${acc}% accuracy`;
+  document.getElementById('modal-sub').textContent = `${done} answered · answers will be revealed after submission`;
   document.getElementById('submit-modal').classList.add('show');
 }
 function closeModal() { document.getElementById('submit-modal').classList.remove('show'); }
 function doSubmit() {
   closeModal();
   revealAll();
+  // After reveal, re-render current view to show results
+  if (curCh === '__all__') goAll();
+  else if (curCh) goCh(curCh);
+  else renderOv();
 }
 function revealAll() {
   QS.forEach(q => {
-    if (state[q.id]) return; // already answered
+    const s = state[q.id];
     const oel = document.getElementById('opts-'+q.id);
     if (!oel) return;
+    // Lock all answers
+    if (s) s.locked = true;
     let h = '';
     q.opts.forEach((opt, i) => {
-      let cls = 'opt locked' + (i === q.ans ? ' ok' : '');
+      let cls = 'opt locked';
+      if (i === q.ans) cls += ' ok';
+      else if (s && s.sel === i && i !== q.ans) cls += ' bad';
       h += `<div class="${cls}"><span class="opt-lbl">${String.fromCharCode(65+i)}</span><span>${opt}</span></div>`;
     });
     oel.innerHTML = h;
     if (window.MathJax) MathJax.typesetPromise([oel]);
+    const c = document.getElementById('qc-'+q.id);
+    if (c && s) {
+      c.classList.remove('ok','bad');
+      c.classList.add(s.correct ? 'ok' : 'bad');
+      const ico = c.querySelector('.q-ico');
+      if (ico) ico.textContent = s.correct ? '✓' : '✗';
+      let v = c.querySelector('.verdict');
+      if (!v) { v = document.createElement('div'); oel.after(v); }
+      v.className = 'verdict ' + (s.correct ? 'ok' : 'bad');
+      v.textContent = s.correct ? '✓ Correct' : '✗ Incorrect — Correct: ' + String.fromCharCode(65+q.ans);
+    } else if (c && !s) {
+      // Not attempted — show correct answer in grey
+      const ico = c.querySelector('.q-ico');
+      if (ico) ico.textContent = '—';
+    }
   });
+  updateBar();
+  renderSidebar();
 }
 
 renderSidebar();
