@@ -195,10 +195,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
       <div style="padding:64px 48px;display:flex;flex-direction:column;justify-content:center;background:var(--surf);">
 
         <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--text);margin-bottom:6px;">Sign In</div>
-        <div style="font-size:13px;color:var(--muted2);margin-bottom:44px;line-height:1.6;">Enter your name to access<br>the SJPO 2020 question bank.</div>
+        <div style="font-size:13px;color:var(--muted2);margin-bottom:44px;line-height:1.6;">Enter your Student ID to access<br>the SJPO 2020 question bank.</div>
 
-        <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Your Name</div>
-        <input id="inp-name" class="login-input" type="text" placeholder="e.g. Alex Tan" autocomplete="off" spellcheck="false">
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Student ID</div>
+        <input id="inp-name" class="login-input" type="text" placeholder="" maxlength="10" autocomplete="off" spellcheck="false" style="letter-spacing:4px;text-transform:uppercase;font-family:var(--mono);font-weight:700;">
         <div id="login-err" class="login-err">Please enter your name.</div>
 
         <button class="login-btn" onclick="doLogin()" style="margin-top:20px;">START QUIZ →</button>
@@ -216,7 +216,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
             <span style="color:var(--accent);">✓</span> Instant answer feedback after each question
           </div>
           <div style="display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px;color:var(--muted);">
-            <span style="color:var(--accent);">✓</span> Section 1: may have multiple correct answers
+            <span style="color:var(--accent);">✓</span> Valid Student IDs: IMP1009 – IMP9967
           </div>
           <div style="display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px;color:var(--muted);">
             <span style="color:var(--accent);">✓</span> Section 2: single correct answer only
@@ -228,9 +228,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
   </div>
 </div>
 
-<div id="sidebar"></div>
+<div id="sidebar" style="display:none;"></div>
 
-<div id="main">
+<div id="main" style="display:none;">
   <div class="topbar">
     <div class="tb-title" id="tb-title">SJPO 2020</div>
     <div style="display:flex;align-items:center;gap:12px;">
@@ -570,6 +570,7 @@ const DIAGRAMS = {
 const state = {};
 let curCh = null;
 let studentName = '';
+const VALID_IDS = new Set(['IMP1009','IMP1093','IMP1213','IMP1301','IMP1427','IMP1493','IMP1567','IMP1619','IMP1721','IMP1811','IMP1889','IMP1993','IMP2063','IMP2113','IMP2213','IMP2309','IMP2377','IMP2441','IMP2531','IMP2621','IMP2689','IMP2791','IMP2909','IMP3023','IMP3109','IMP3191','IMP3319','IMP3373','IMP3449','IMP3511','IMP3559','IMP3643','IMP3709','IMP3719','IMP3779','IMP3797','IMP3877','IMP3943','IMP4073','IMP4211','IMP4273','IMP4373','IMP4423','IMP4481','IMP4583','IMP4673','IMP4759','IMP4817','IMP4951','IMP5059','IMP5153','IMP5273','IMP5351','IMP5471','IMP5569','IMP5669','IMP5791','IMP5867','IMP5981','IMP6073','IMP6203','IMP6271','IMP6361','IMP6473','IMP6571','IMP6691','IMP6779','IMP6833','IMP6949','IMP7013','IMP7103','IMP7213','IMP7309','IMP7451','IMP7523','IMP7591','IMP7717','IMP7817','IMP7933','IMP8089','IMP8221','IMP8291','IMP8423','IMP8543','IMP8629','IMP8699','IMP8821','IMP8831','IMP8963','IMP9103','IMP9181','IMP9311','IMP9403','IMP9461','IMP9539','IMP9601','IMP9689','IMP9803','IMP9859','IMP9967']);
 
 function chSt(ch) {
   const ids = ch ? ch.qs : QS.map(q => q.id);
@@ -687,7 +688,7 @@ function buildCard(q, forceOpen) {
     <div class="q-hd" onclick="togQ(${q.id})">
       <span class="q-num">Q${String(q.id).padStart(2,'0')}</span>
       ${badge}
-      <span class="q-ico" style="margin-left:auto;">${answered?(s.correct?'✓':'✗'):selected?'●':'○'}</span>
+      <span class="q-ico" style="margin-left:auto;">${answered?(s.correct?'✓':'✗'):(s&&s.sel!==undefined)?'●':'○'}</span>
       <span class="q-chev">▼</span>
     </div>
     <div class="q-body">
@@ -780,17 +781,24 @@ function goCh(key) { curCh = key; renderCh(key); renderSidebar(); window.scrollT
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
 function doLogin() {
-  const name = document.getElementById('inp-name').value.trim();
+  const raw = document.getElementById('inp-name').value.trim().toUpperCase();
   const err = document.getElementById('login-err');
-  if (!name) {
+  if (!raw) {
+    document.getElementById('inp-name').focus();
+    return;
+  }
+  if (!VALID_IDS.has(raw)) {
     err.style.display = 'block';
+    err.textContent = '✗ Student ID not recognised. Please check and try again.';
     document.getElementById('inp-name').focus();
     return;
   }
   err.style.display = 'none';
-  studentName = name;
+  studentName = raw;
   document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('tb-title').textContent = 'SJPO 2020 · ' + name;
+  document.getElementById('sidebar').style.display = 'flex';
+  document.getElementById('main').style.display = 'flex';
+  document.getElementById('tb-title').textContent = 'SJPO 2020 · ' + raw;
   renderSidebar();
   renderOv();
 }
@@ -849,8 +857,6 @@ function revealAll() {
   renderSidebar();
 }
 
-renderSidebar();
-renderOv();
 </script>
 
 
